@@ -28,7 +28,10 @@ export const clean = (s: unknown, max: number) =>
 
 const sign = (v: string) =>
   crypto
-    .createHmac("sha256", process.env.SESSION_SECRET || "")
+    .createHmac(
+      "sha256",
+      process.env.SESSION_SECRET || ""
+    )
     .update(v)
     .digest("hex");
 
@@ -48,18 +51,25 @@ export function isAdmin(req: Request) {
 
   const [e, s] = m[1].split(".");
 
-  if (!e || !s || Number(e) < Date.now()) return false;
+  if (!e || !s || Number(e) < Date.now()) {
+    return false;
+  }
 
   const x = sign(e);
 
   return (
     s.length === x.length &&
-    crypto.timingSafeEqual(Buffer.from(s), Buffer.from(x))
+    crypto.timingSafeEqual(
+      Buffer.from(s),
+      Buffer.from(x)
+    )
   );
 }
 
 export async function allReviews() {
-  const h = await redis.hgetall<Record<string, Review>>("reviews");
+  const h = await redis.hgetall<Record<string, Review>>(
+    "reviews"
+  );
 
   return Object.values(h || {}).sort(
     (a, b) => b.createdAt - a.createdAt
@@ -72,7 +82,9 @@ export async function limited(
   max: number,
   secs: number
 ) {
-  const ip = (req.headers.get("x-forwarded-for") || "x")
+  const ip = (
+    req.headers.get("x-forwarded-for") || "x"
+  )
     .split(",")[0]
     .trim();
 
