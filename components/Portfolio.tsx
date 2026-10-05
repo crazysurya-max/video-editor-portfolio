@@ -2,10 +2,12 @@
 import { useState } from "react";
 
 function Card({ w, label }: { w: any; label: string }) {
+  const afterSrc = w.afterVideo || w.video;
+  const beforeSrc = w.beforeVideo;
+  const ba = !!(beforeSrc && afterSrc);
   const [after, setAfter] = useState(true);
   const [ratio, setRatio] = useState<number | null>(null); // width / height, detected automatically
-  const ba = w.beforeVideo && w.afterVideo;
-  const src = ba ? (after ? w.afterVideo : w.beforeVideo) : w.video;
+  const src = ba ? (after ? afterSrc : beforeSrc) : afterSrc || beforeSrc;
   const wide = ratio !== null && ratio > 1;
   const box = { aspectRatio: ratio ?? 9 / 16 };
 
