@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 
 export const Ctx = createContext<any>(null);
 
@@ -81,7 +81,7 @@ export function Sel({
 }
 
 /* -------------------------------------------------------
-   MEDIA UPLOAD (direct browser -> Vercel Blob)
+   MEDIA UPLOAD (direct browser -> Vercel Blob, presigned)
    ------------------------------------------------------- */
 
 export function Media({
@@ -101,7 +101,7 @@ export function Media({
     if (!file) return;
     setPr("Uploading 0%");
     try {
-      const blob = await upload(`${kind}s/${file.name}`, file, {
+      const blob = await uploadPresigned(`${kind}s/${file.name}`, file, {
         access: "public",
         handleUploadUrl: "/api/admin/upload",
         multipart: true,
