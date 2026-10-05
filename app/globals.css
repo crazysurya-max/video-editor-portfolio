@@ -39,7 +39,8 @@ footer a{color:#fff;margin-right:14px}
 .thumb{max-width:260px;max-height:160px;border-radius:12px;display:block;margin:8px 0}.media{margin:14px 0}summary{cursor:pointer;font-weight:600}
 .statg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.statg .glass{margin:0}.statg b{font-size:28px}
 @media(max-width:800px){.adm{grid-template-columns:1fr}.side{position:static;height:auto;display:flex;flex-wrap:wrap;gap:4px}.side button,.side a{width:auto}}
-/* Portfolio: vertical 9:16 videos */
-.vid.tall{aspect-ratio:9/16;object-fit:cover;max-height:80vh}
-.grid.reels{grid-template-columns:repeat(auto-fill,minmax(240px,300px));justify-content:center}
-@media(max-width:600px){.grid.reels{grid-template-columns:minmax(0,340px)}}
+/* Portfolio: fits both 9:16 and 16:9 without cropping */
+.vid.fit{width:100%;height:auto;object-fit:contain;background:#000;max-height:80vh}
+.grid.reels{grid-template-columns:repeat(auto-fill,minmax(260px,300px));justify-content:center;align-items:start;grid-auto-flow:dense}
+.card.wide{grid-column:span 2}
+@media(max-width:700px){.grid.reels{grid-template-columns:minmax(0,1fr)}.card.wide{grid-column:span 1}}

@@ -3,10 +3,14 @@ import { useState } from "react";
 
 function Card({ w, label }: { w: any; label: string }) {
   const [after, setAfter] = useState(true);
+  const [ratio, setRatio] = useState<number | null>(null); // width / height, detected automatically
   const ba = w.beforeVideo && w.afterVideo;
   const src = ba ? (after ? w.afterVideo : w.beforeVideo) : w.video;
+  const wide = ratio !== null && ratio > 1;
+  const box = { aspectRatio: ratio ?? 9 / 16 };
+
   return (
-    <article className="glass card">
+    <article className={"glass card" + (wide ? " wide" : "")}>
       {src ? (
         <video
           key={src}
@@ -15,13 +19,27 @@ function Card({ w, label }: { w: any; label: string }) {
           controls
           muted
           playsInline
-          preload="none"
-          className="vid tall"
+          preload="metadata"
+          className="vid fit"
+          style={box}
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth && v.videoHeight) setRatio(v.videoWidth / v.videoHeight);
+          }}
         />
       ) : w.thumb ? (
-        <img src={w.thumb} alt={w.title} className="vid tall" />
+        <img
+          src={w.thumb}
+          alt={w.title}
+          className="vid fit"
+          style={box}
+          onLoad={(e) => {
+            const i = e.currentTarget;
+            if (i.naturalWidth && i.naturalHeight) setRatio(i.naturalWidth / i.naturalHeight);
+          }}
+        />
       ) : (
-        <div className="vid tall ph">No video</div>
+        <div className="vid fit ph" style={box}>No video</div>
       )}
       {ba && (
         <div className="row" role="group" aria-label="Before or after">
