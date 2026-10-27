@@ -1,7 +1,7 @@
+
 "use client";
 
 import { createContext, useContext, useState } from "react";
-import { uploadPresigned } from "@vercel/blob/client";
 
 export const Ctx = createContext<any>(null);
 
@@ -29,10 +29,12 @@ export function F({
   type?: string;
 }) {
   const { c, set } = useCms();
+
   const P = {
     value: get(c, p) ?? "",
     onChange: (e: any) => set(p, e.target.value),
   };
+
   return (
     <label>
       {label}
@@ -43,6 +45,7 @@ export function F({
 
 export function Chk({ p, label }: { p: string; label: string }) {
   const { c, set } = useCms();
+
   return (
     <label className="row">
       <input
@@ -66,10 +69,14 @@ export function Sel({
   opts: string[];
 }) {
   const { c, set } = useCms();
+
   return (
     <label>
       {label}
-      <select value={get(c, p) ?? ""} onChange={(e) => set(p, e.target.value)}>
+      <select
+        value={get(c, p) ?? ""}
+        onChange={(e) => set(p, e.target.value)}
+      >
         {opts.map((o) => (
           <option key={o} value={o}>
             {o}
@@ -81,7 +88,8 @@ export function Sel({
 }
 
 /* -------------------------------------------------------
-   MEDIA UPLOAD (direct browser -> Vercel Blob, presigned)
+   MEDIA UPLOAD (signed browser upload -> Cloudinary)
+   The Cloudinary API secret stays on the server.
    ------------------------------------------------------- */
 
 export function Media({
@@ -99,27 +107,142 @@ export function Media({
 
   async function pick(file?: File) {
     if (!file) return;
-    setPr("Uploading 0%");
+
+    const allowedTypes =
+      kind === "image"
+        ? ["image/jpeg", "image/png", "image/webp"]
+        : ["video/mp4", "video/webm", "video/quicktime"];
+
+    if (!allowedTypes.includes(file.type)) {
+      toast("Unsupported file type.", true);
+      return;
+    }
+
+    // Prevent unexpectedly large files from being sent.
+    const maxSize = 500 * 1024 * 1024;
+
+    if (file.size > maxSize) {
+      toast("File is too large. Maximum size is 500 MB.", true);
+      return;
+    }
+
+    setPr("Preparing upload…");
+
     try {
-      const blob = await uploadPresigned(`${kind}s/${file.name}`, file, {
-        access: "public",
-        handleUploadUrl: "/api/admin/upload",
-        multipart: true,
-        onUploadProgress: (e: any) =>
-          setPr(`Uploading ${Math.round(e.percentage)}%`),
+      // The server verifies the admin session and signs the upload.
+      const authResponse = await fetch("/api/admin/upload", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+        },
       });
-      set(p, blob.url);
+
+      const auth = await authResponse.json();
+
+      if (!authResponse.ok) {
+        throw new Error(auth.error || "Could not authorize upload.");
+      }
+
+      if (
+        !auth.cloudName ||
+        !auth.apiKey ||
+        !auth.signature ||
+        !auth.timestamp ||
+        !auth.folder
+      ) {
+        throw new Error("Upload configuration is incomplete.");
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("api_key", auth.apiKey);
+      form.append("timestamp", String(auth.timestamp));
+      form.append("folder", auth.folder);
+      form.append("signature", auth.signature);
+
+      const resourceType = kind === "video" ? "video" : "image";
+
+      const endpoint =
+        `https://api.cloudinary.com/v1_1/${encodeURIComponent(
+          auth.cloudName
+        )}/${resourceType}/upload`;
+
+      setPr("Uploading 0%");
+
+      const result: any = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.open("POST", endpoint);
+        xhr.responseType = "text";
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentage = Math.round(
+              (event.loaded / event.total) * 100
+            );
+
+            setPr(`Uploading ${percentage}%`);
+          }
+        };
+
+        xhr.onload = () => {
+          let data: any;
+
+          try {
+            data = JSON.parse(xhr.responseText);
+          } catch {
+            reject(new Error("Cloudinary returned an invalid response."));
+            return;
+          }
+
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(data);
+          } else {
+            reject(
+              new Error(
+                data?.error?.message || "Cloudinary upload failed."
+              )
+            );
+          }
+        };
+
+        xhr.onerror = () => {
+          reject(new Error("Network error during upload."));
+        };
+
+        xhr.onabort = () => {
+          reject(new Error("Upload cancelled."));
+        };
+
+        xhr.send(form);
+      });
+
+      if (!result.secure_url) {
+        throw new Error("Cloudinary did not return a media URL.");
+      }
+
+      // Store the resulting URL in the CMS state.
+      set(p, result.secure_url);
+
       toast("Uploaded successfully. Click Save & Publish.");
     } catch (e: any) {
       console.error("MEDIA UPLOAD ERROR:", e);
-      toast("Failed to upload: " + (e?.message || "Please try again."), true);
+
+      toast(
+        "Failed to upload: " +
+          (e?.message || "Please try again."),
+        true
+      );
     } finally {
       setPr("");
     }
   }
 
   function remove() {
-    if (!confirm("Remove this file?")) return;
+    if (!confirm("Remove this file from the CMS field?")) return;
+
+    // Removes the URL from the CMS field, not the Cloudinary asset itself.
     set(p, "");
   }
 
@@ -131,7 +254,13 @@ export function Media({
         (kind === "image" ? (
           <img src={v} alt="" className="thumb" />
         ) : (
-          <video src={v} className="thumb" controls muted preload="metadata" />
+          <video
+            src={v}
+            className="thumb"
+            controls
+            muted
+            preload="metadata"
+          />
         ))}
 
       <div className="row">
@@ -142,9 +271,17 @@ export function Media({
               ? "image/jpeg,image/png,image/webp"
               : "video/mp4,video/webm,video/quicktime"
           }
-          onChange={(e) => pick(e.target.files?.[0])}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+
+            // Allows selecting the same file again after an upload.
+            e.target.value = "";
+
+            if (file) void pick(file);
+          }}
           disabled={!!pr}
         />
+
         {v && (
           <button
             type="button"
@@ -183,7 +320,9 @@ export function List({
   const mv = (i: number, d: number) => {
     const a = [...list];
     const j = i + d;
+
     if (j < 0 || j >= a.length) return;
+
     [a[i], a[j]] = [a[j], a[i]];
     set(p, a);
   };
@@ -197,18 +336,31 @@ export function List({
           {children(`${p}.${i}`)}
 
           <div className="row">
-            <button type="button" className="btn ghost" onClick={() => mv(i, -1)}>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => mv(i, -1)}
+            >
               ↑ Up
             </button>
-            <button type="button" className="btn ghost" onClick={() => mv(i, 1)}>
+
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => mv(i, 1)}
+            >
               ↓ Down
             </button>
+
             <button
               type="button"
               className="btn ghost"
               onClick={() =>
                 confirm("Delete this item?") &&
-                set(p, list.filter((_, k) => k !== i))
+                set(
+                  p,
+                  list.filter((_, k) => k !== i)
+                )
               }
             >
               Delete
@@ -220,7 +372,9 @@ export function List({
       <button
         type="button"
         className="btn"
-        onClick={() => set(p, [...list, { id: crypto.randomUUID(), ...make() }])}
+        onClick={() =>
+          set(p, [...list, { id: crypto.randomUUID(), ...make() }])
+        }
       >
         + Add
       </button>

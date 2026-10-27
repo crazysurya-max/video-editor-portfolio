@@ -1,56 +1,47 @@
+
 import { NextResponse } from "next/server";
-import { issueSignedToken } from "@vercel/blob";
-import {
-  type HandleUploadPresignedBody,
-  handleUploadPresigned,
-} from "@vercel/blob/client";
+import { v2 as cloudinary } from "cloudinary";
 import { isAdmin } from "@/lib/db";
 
-const TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-];
-const MAX = 500 * 1024 * 1024;
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as HandleUploadPresignedBody;
   try {
-    const json = await handleUploadPresigned({
-      body,
-      request: req,
-      getSignedToken: async (pathname) => {
-        if (!isAdmin(req)) throw new Error("Not authorized");
-        const validUntil = Date.now() + 60 * 60 * 1000;
-        const token = await issueSignedToken({
-          pathname,
-          operations: ["put"],
-          allowedContentTypes: TYPES,
-          maximumSizeInBytes: MAX,
-          validUntil,
-        });
-        return {
-          token,
-          urlOptions: {
-            allowedContentTypes: TYPES,
-            maximumSizeInBytes: MAX,
-            validUntil,
-            addRandomSuffix: true,
-            allowOverwrite: false,
-          },
-        };
-      },
-      onUploadCompleted: async () => {},
+    if (!isAdmin(req)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      return NextResponse.json(
+        { error: "Cloudinary environment variables are missing" },
+        { status: 500 }
+      );
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = "portfolio";
+
+    const signature = cloudinary.utils.api_sign_request(
+      { folder, timestamp },
+      apiSecret
+    );
+
+    return NextResponse.json({
+      cloudName,
+      apiKey,
+      timestamp,
+      folder,
+      signature,
     });
-    return NextResponse.json(json);
-  } catch (e: any) {
-    const msg = e instanceof Error ? e.message : String(e);
+  } catch (error) {
+    console.error("CLOUDINARY SIGNING ERROR:", error);
     return NextResponse.json(
-      { error: msg },
-      { status: msg === "Not authorized" ? 401 : 400 }
+      { error: "Could not prepare media upload" },
+      { status: 500 }
     );
   }
 }
